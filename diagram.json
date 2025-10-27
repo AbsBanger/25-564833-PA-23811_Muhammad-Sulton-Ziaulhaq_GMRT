@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "author": "Iqbal ChatGPT Demo",
+  "editor": "wokwi",
+  "parts": [
+    { "type": "board-esp32-devkit-v1", "id": "esp", "top": -60, "left": -40, "attrs": {} },
+    { "type": "wokwi-mpu6050", "id": "mpu", "top": -180, "left": 220, "attrs": {} },
+    { "type": "wokwi-servo", "id": "servo1", "top": 120, "left": -180, "attrs": {} },
+    { "type": "wokwi-servo", "id": "servo2", "top": 120, "left": -100, "attrs": {} },
+    { "type": "wokwi-servo", "id": "servo3", "top": 120, "left": -20, "attrs": {} },
+    { "type": "wokwi-servo", "id": "servo4", "top": 120, "left": 60, "attrs": {} },
+    { "type": "wokwi-servo", "id": "servo5", "top": 120, "left": 140, "attrs": {} },
+    { "type": "wokwi-pir-motion-sensor", "id": "pir", "top": -60, "left": 300, "attrs": {} }
+  ],
+  "connections": [
+    ["esp:3V3", "mpu:VCC", "red", ["v0"]],
+    ["esp:GND.1", "mpu:GND", "black", ["v0"]],
+    ["esp:21", "mpu:SDA", "green", ["v0"]],
+    ["esp:22", "mpu:SCL", "green", ["v0"]],
+
+    ["esp:13", "servo1:signal", "blue", ["v0"]],
+    ["esp:12", "servo2:signal", "blue", ["v0"]],
+    ["esp:14", "servo3:signal", "blue", ["v0"]],
+    ["esp:27", "servo4:signal", "blue", ["v0"]],
+    ["esp:26", "servo5:signal", "blue", ["v0"]],
+
+    ["esp:5V", "servo1:V+", "red", ["v0"]],
+    ["esp:5V", "servo2:V+", "red", ["v0"]],
+    ["esp:5V", "servo3:V+", "red", ["v0"]],
+    ["esp:5V", "servo4:V+", "red", ["v0"]],
+    ["esp:5V", "servo5:V+", "red", ["v0"]],
+
+    ["esp:GND.2", "servo1:GND", "black", ["v0"]],
+    ["esp:GND.2", "servo2:GND", "black", ["v0"]],
+    ["esp:GND.2", "servo3:GND", "black", ["v0"]],
+    ["esp:GND.2", "servo4:GND", "black", ["v0"]],
+    ["esp:GND.2", "servo5:GND", "black", ["v0"]],
+
+    ["esp:34", "pir:OUT", "orange", ["v0"]],
+    ["esp:5V", "pir:VCC", "red", ["v0"]],
+    ["esp:GND.1", "pir:GND", "black", ["v0"]]
+  ],
+  "dependencies": {},
+  "code": "#include <Wire.h>\n#include <Servo.h>\n\nconst uint8_t MPU_ADDR = 0x68;\nconst int PIN_SERVO1=13,PIN_SERVO2=12,PIN_SERVO3=14,PIN_SERVO4=27,PIN_SERVO5=26,PIN_PIR=34;\nServo s1,s2,s3,s4,s5;\nconst float SYS_MIN=-90.0,SYS_MAX=90.0;const int SERVO_CENTER=90;const float alpha=0.98,GYRO_SCALE=131.0;float roll=0,pitch=0,yaw=0;bool firstRead=true;\nunsigned long lastTime=0;float dt=0.02;bool yawInMotion=false,yawHoldPending=false;unsigned long yawHoldStart=0,lastMotionGyroTime=0;\nconst float GYRO_Z_STOP_THRESH=5.0;const unsigned long STABLE_TIME_MS=500;\nconst int ALERT_S1=120,ALERT_S2=120,ALERT_S3=60,ALERT_S4=60,ALERT_S5=150;const unsigned long ALERT_HOLD_MS=1000;\nint sysToServo(float a){if(a>SYS_MAX)a=SYS_MAX;if(a<SYS_MIN)a=SYS_MIN;float n=(a-SYS_MIN)/(SYS_MAX-SYS_MIN);return round(n*180);}\nvoid mpuInit(){Wire.beginTransmission(MPU_ADDR);Wire.write(0x6B);Wire.write(0);Wire.endTransmission(true);}void setup(){Serial.begin(115200);Wire.begin();mpuInit();s1.attach(PIN_SERVO1);s2.attach(PIN_SERVO2);s3.attach(PIN_SERVO3);s4.attach(PIN_SERVO4);s5.attach(PIN_SERVO5);s1.write(90);s2.write(90);s3.write(90);s4.write(90);s5.write(90);pinMode(PIN_PIR,INPUT);lastTime=millis();Serial.println(\"Ready\");}\nvoid loop(){unsigned long now=millis();dt=(now-lastTime)/1000.0;if(dt<=0)dt=0.02;lastTime=now;Wire.beginTransmission(MPU_ADDR);Wire.write(0x3B);Wire.endTransmission(false);Wire.requestFrom(MPU_ADDR,14,true);int16_t ax=(Wire.read()<<8)|Wire.read();int16_t ay=(Wire.read()<<8)|Wire.read();int16_t az=(Wire.read()<<8)|Wire.read();int16_t gx=(Wire.read()<<8)|Wire.read();int16_t gy=(Wire.read()<<8)|Wire.read();int16_t gz=(Wire.read()<<8)|Wire.read();float a_x=ax/16384.0,a_y=ay/16384.0,a_z=az/16384.0,g_x=gx/GYRO_SCALE,g_y=gy/GYRO_SCALE,g_z=gz/GYRO_SCALE;float accRoll=atan2(a_y,a_z)*180.0/PI;float accPitch=atan2(-a_x,sqrt(a_y*a_y+a_z*a_z))*180.0/PI;if(firstRead){roll=accRoll;pitch=accPitch;yaw=0;firstRead=false;}roll=alpha*(roll+g_x*dt)+(1-alpha)*accRoll;pitch=alpha*(pitch+g_y*dt)+(1-alpha)*accPitch;yaw+=g_z*dt;if(yaw>180)yaw-=360;if(yaw<-180)yaw+=360;bool pir=digitalRead(PIN_PIR)==HIGH;if(pir){Serial.println(\"PIR!\");s1.write(ALERT_S1);s2.write(ALERT_S2);s3.write(ALERT_S3);s4.write(ALERT_S4);s5.write(ALERT_S5);delay(ALERT_HOLD_MS);s1.write(90);s2.write(90);s3.write(90);s4.write(90);s5.write(90);delay(300);return;}int s12=sysToServo(-roll);int s34=sysToServo(pitch);s1.write(s12);s2.write(s12);s3.write(s34);s4.write(s34);if(fabs(g_z)>GYRO_Z_STOP_THRESH){yawInMotion=true;lastMotionGyroTime=now;s5.write(sysToServo(yaw));}else if(yawInMotion&&(now-lastMotionGyroTime>=STABLE_TIME_MS)){yawInMotion=false;yawHoldPending=true;yawHoldStart=now;}else if(yawHoldPending){if(now-yawHoldStart>=1000){s5.write(90);yawHoldPending=false;yaw=0;}}delay(10);static unsigned long lastPrint=0;if(now-lastPrint>500){lastPrint=now;Serial.printf(\"Roll %.1f Pitch %.1f Yaw %.1f\\n\",roll,pitch,yaw);}}"
+}
